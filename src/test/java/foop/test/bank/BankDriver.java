@@ -16,7 +16,6 @@ import org.slf4j.LoggerFactory;
 
 import foop.core.StateManager;
 import foop.core.StateManager.TAction;
-import foop.core.Transaction;
 import foop.utils.InstanceFactory;
 
 /**
@@ -112,7 +111,7 @@ public class BankDriver {
         manager.make("Account1");
         manager.make("Account2");
         
-        Transaction t = manager.newTransaction("Intial").op(() -> {
+        manager.newTransaction(null).op(() -> {
             
             try {
                 
@@ -126,9 +125,7 @@ public class BankDriver {
             }
             
             return TAction.DONE;
-        }).done();
-        
-        t.execute();
+        }).done().execute();
     }
     
     /**
@@ -140,16 +137,15 @@ public class BankDriver {
         
         setupBankAccounts12();
         
-        logMsg("Initially");
+        logMsg("HARMLESS:: Initially");
         
-        Transaction t = manager.newTransaction("T1")
+        manager.newTransaction("T1")
                 .op(() -> deposit("Account1", 500.0F))
                 .op(() -> withdraw("Account2", 500.0F))
-                .done();
+                .done()
+                .execute();
         
-        t.execute();
-        
-        logMsg("Finally");
+        logMsg("HARMLESS:: Finally");
     }
     
     /**
@@ -163,7 +159,7 @@ public class BankDriver {
             
             try {
                 
-                logger.info(String.format(msg + " :: Acc1:: %f, Acc2:: %f",
+                logger.error(String.format(msg + " :: Acc1:: %f, Acc2:: %f",
                         ((AccountBalance) manager.readT("Account1").get()).getBalance(),
                         ((AccountBalance) manager.readT("Account2").get()).getBalance()));
             } catch (Exception e) {
@@ -197,36 +193,21 @@ public class BankDriver {
             setupBankAccounts12();
             
             // logger -- initial state
-            manager.newTransaction("LoggerTransaction").op(() -> {
-                
-                try {
-                    
-                    logger.info(String.format("Initially:: Acc1:: %f, Acc2:: %f",
-                            ((AccountBalance) manager.readT("Account1").get()).getBalance(),
-                            ((AccountBalance) manager.readT("Account2").get()).getBalance()));
-                } catch (Exception e) {
-                    
-                    logger.error(e.getMessage(), e);
-                    return TAction.FAIL;
-                }
-                
-                return TAction.DONE;
-            }).done().execute(new CountDownLatch(1));
-            
-            Transaction t1 = manager.newTransaction("T1")
-                    .op(() -> deposit("Account1", 500F))
-                    .op(() -> withdraw("Account2", 500F))
-                    .done();
-            
-            Transaction t2 = manager.newTransaction("T2")
-                    .op(() -> deposit("Account2", 100F))
-                    .op(() -> withdraw("Account1", 100F))
-                    .done();
+            logMsg("HARMLESS:: Initially");
             
             CountDownLatch latch = new CountDownLatch(2);
             
-            t1.execute(latch);
-            t2.execute(latch);
+            manager.newTransaction("T1")
+                    .op(() -> deposit("Account1", 500F))
+                    .op(() -> withdraw("Account2", 500F))
+                    .done()
+                    .execute(latch);
+            
+            manager.newTransaction("T2")
+                    .op(() -> deposit("Account2", 100F))
+                    .op(() -> withdraw("Account1", 100F))
+                    .done()
+                    .execute(latch);
             
             try {
                 
@@ -238,21 +219,7 @@ public class BankDriver {
             }
             
             // logger -- after state
-            manager.newTransaction("LoggerTransaction").op(() -> {
-                
-                try {
-                    
-                    logger.info(String.format("Finally:: Acc1:: %f, Acc2:: %f",
-                            ((AccountBalance) manager.readT("Account1").get()).getBalance(),
-                            ((AccountBalance) manager.readT("Account2").get()).getBalance()));
-                } catch (Exception e) {
-                    
-                    logger.error(e.getMessage(), e);
-                    return TAction.FAIL;
-                }
-                
-                return TAction.DONE;
-            }).done().execute(new CountDownLatch(1));
+            logMsg("HARMLESS:: Finally");
             
             logger.info(String.format("Finishing up test driver 2..."));
         } catch (Exception e) {

@@ -8,6 +8,7 @@
  */
 package foop.core;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -90,5 +91,6 @@ public class Record {
         this.status = false;
         this.writeSet = new HashSet<>();
         this.readSet = new HashSet<>();
+        this.oldValues = new HashMap<>();
     }
 }

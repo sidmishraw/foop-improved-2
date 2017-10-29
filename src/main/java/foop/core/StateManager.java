@@ -360,7 +360,7 @@ public class StateManager {
         
         try {
             
-            logger.info(String.format("Variable :: name: %s, has state: %s", variableName,
+            logger.debug(String.format("Variable :: name: %s, has state: %s", variableName,
                     Optional.ofNullable(this.stateTable.get(variableName))));
             
             s = this.stateTable.get(variableName);
@@ -407,13 +407,13 @@ public class StateManager {
                 
                 State oldState = Optional.ofNullable(this.stateTable.get(variableName)).orElse(null);
                 
-                logger.info(
+                logger.debug(
                         String.format("Updating Variable :: name: %s with current state: %s", variableName, oldState));
             }
             
             this.stateTable.put(variableName, state);
             
-            logger.info(String.format("Updated Variable :: name: %s to new state: %s", variableName, state));
+            logger.debug(String.format("Updated Variable :: name: %s to new state: %s", variableName, state));
         } catch (Exception e) {
             
             logger.error(e.getMessage(), e);
@@ -452,10 +452,17 @@ public class StateManager {
             throw new Exception("The `read` operation can only be used when within a Transaction context");
         }
         
-        t.addReadSetMembers(variableName); // add variable to read-set of the
-                                           // transaction t
+        // add variable to read-set of the transaction t
+        t.addReadSetMembers(variableName);
         
-        logger.info(String.format("Variable :: name: %s, has state: %s", variableName,
+        // # take backup of the readSet member
+        if (!Objects.isNull(this.stateTable.get(variableName))) {
+            
+            t.getRecord().getOldValues().put(variableName, this.stateTable.get(variableName));
+        }
+        // # take backup of the readSet member
+        
+        logger.debug(String.format("Variable :: name: %s, has state: %s", variableName,
                 Optional.ofNullable(this.stateTable.get(variableName))));
         
         return Optional.ofNullable(this.stateTable.get(variableName));
@@ -489,16 +496,40 @@ public class StateManager {
         
         t.addWriteSetMembers(variableName); // add to write-set
         
-        if (logger.isInfoEnabled()) {
+        // # try to take ownership of the writeSet member
+        Optional<Transaction> currentOwner = this.getOwner(variableName);
+        
+        if (!currentOwner.isPresent() || (currentOwner.isPresent() && currentOwner.get().equals(t))) {
+            
+            this.setOwner(variableName, t);
+            
+            logger.debug(String.format("Transaction:: %s took ownership of Variable:: %s", t.getName(), variableName));
+        } else {
+            
+            // bail out, couldn't take ownership
+            throw new Exception("Couldn't take ownership of the Memory cell, bailing out...");
+        }
+        // # try to take ownership of the writeSet member
+        
+        // # take backup after taking ownership
+        if (!Objects.isNull(this.stateTable.get(variableName))) {
+            
+            t.getRecord().getOldValues().put(variableName, this.stateTable.get(variableName));
+        }
+        // # take backup after taking ownership
+        
+        if (logger.isDebugEnabled()) {
             
             State oldState = Optional.ofNullable(this.stateTable.get(variableName)).orElse(null);
             
-            logger.info(String.format("Updating Variable :: name: %s with current state: %s", variableName, oldState));
+            logger.debug(String.format("Updating Variable :: name: %s with current state: %s", variableName, oldState));
         }
         
+        // # update state in state table
         this.stateTable.put(variableName, state);
+        // # update state in state table
         
-        logger.info(String.format("Updated Variable :: name: %s to new state: %s", variableName, state));
+        logger.debug(String.format("Updated Variable :: name: %s to new state: %s", variableName, state));
     }
     // # STM improvement
     
@@ -593,8 +624,8 @@ public class StateManager {
      * transaction, the operational logic and the reference to the
      * <i>StateManager</i> that is in charge of the world.
      * 
-     * @param description
-     *            The description of the transaction
+     * @param nameTransaction
+     *            The name of the transaction
      * 
      * @param manager
      *            The reference to the <i>StateManager</i> that is in charge
@@ -605,21 +636,26 @@ public class StateManager {
      *         chaining
      */
     @WriteLocked
-    public final StateManager newTransaction(String description) {
+    public final StateManager newTransaction(String nameTransaction) {
+        
+        if (Objects.isNull(nameTransaction)) {
+            
+            nameTransaction = String.format("Transaction#%d", new Double(Math.random() * 100).intValue());
+        }
         
         this.stateManagerLock.writeLock().lock();
         
         try {
             
             Record record = new Record();
-            record.setDescription(description);
+            record.setDescription(nameTransaction);
             record.setVersion(ts.getTVersion());
             
             ts.updateVersion();
             
             ts.setT(new Transaction());
             
-            ts.getT().setName(description);
+            ts.getT().setName(nameTransaction);
             ts.getT().setRecord(record);
             ts.getT().setManager(this);
         } catch (Exception e) {
